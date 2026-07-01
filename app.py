@@ -19,20 +19,55 @@ def clean_json(text):
     match = re.search(r"\{.*\}", text, flags=re.S)
     return match.group(0) if match else text
 
-@st.cache_data(show_spinner=False)
-def call_model(lyrics, api_key):
-    client = genai.Client(api_key=api_key)
-    prompt = (f"다음 가사를 분석해서 JSON 형식으로 출력해줘. "
-              f"필수 필드: line_number, original, ipa, literal_translation(직역), poetic_translation(의역), vocabulary(word와 meaning 포함). "
-              f"모든 번역과 뜻은 한국어로 작성해줘. "
-              f"가사: {lyrics}")
+# STREAMING_CHUNK:교체할 call_model_cached 함수
+@st.cache_data(show_spinner=False, max_entries=512)
+def call_model_cached(lines_tuple: tuple, api_key: str) -> dict:
+    if not api_key:
+        raise RuntimeError("구글 API 키가 설정되지 않았습니다. 사이드바에 직접 입력하거나 Secrets에서 설정해 주세요.")
+
+    # 핵심 수정: genai.configure 방식을 사용합니다
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config={"response_mime_type": "application/json", "temperature": 0.2}
-    )
-    return json.loads(clean_json(response.text))
+    inner_attempts = 3
+    last_exc = None
+    for inner in range(inner_attempts):
+        try:
+            prompt = build_prompt(list(lines_tuple))
+            if inner > 0:
+                prompt += "\n다시 한 번 강조합니다: 각 줄의 'line_ipa'와 'diction'을 반드시 빈칸 없이 채워 한국어로 작성하고, 다른 텍스트 없이 오직 JSON 객체만 출력하세요."
+
+            response = model.generate_content(
+                prompt,
+                generation_config={
+                    "temperature": 0.2,
+                }
+            )
+            raw = getattr(response, "text", "") or ""
+
+            payload = None
+            try:
+                payload = json.loads(clean_json_text(raw))
+            except Exception:
+                payload = parse_model_response(raw, list(lines_tuple))
+
+            if not isinstance(payload, dict):
+                last_exc = RuntimeError("모델 응답을 파싱하지 못했습니다.")
+                continue
+
+            if validate_payload(payload, list(lines_tuple)):
+                return payload
+            last_exc = RuntimeError("모델이 일부 항목의 IPA/딕션을 누락했습니다.")
+
+        except Exception as exc:
+            last_exc = exc
+            if is_rate_limit_error(exc):
+                continue
+            raise
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("모델 호출에 실패했습니다.")
 
 st.title("🎼 Vocal Diction Assistant")
 
