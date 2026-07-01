@@ -13,7 +13,7 @@ def get_api_key():
 def call_model(lines: list, api_key: str) -> dict:
     genai.configure(api_key=api_key)
     # 1.5-flash 모델 사용 (안정적)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     # 프롬프트에 "반드시 모든 설명을 한국어로 하라"는 지시를 명확히 추가했습니다.
     prompt = (f"다음 가사를 성악 딕션 분석가처럼 분석해줘. "
