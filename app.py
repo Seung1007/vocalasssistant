@@ -25,7 +25,7 @@ def get_api_key():
 def call_model(lines: list, api_key: str) -> dict:
     # 안정적인 호출을 위해 configure 방식 사용
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     prompt = (f"다음 가사를 분석해서 JSON 형식으로만 출력해줘. "
               f"필수 필드: line_number, original, ipa, literal_translation, poetic_translation, vocabulary(word, meaning). "
