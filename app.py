@@ -1,13 +1,10 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import json
-import os
 import re
 
-# 페이지 설정
 st.set_page_config(page_title="Vocal Diction Assistant", page_icon="🎼", layout="wide")
 
-# CSS 스타일
 st.markdown("""<style>
     .line-card { background: #ffffff; border-radius: 16px; padding: 20px; margin-bottom: 20px; border: 1px solid #e4e4f0; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
     .line-title { font-weight: 800; color: #4a4a8a; margin-bottom: 10px; font-size: 1.2rem; }
@@ -17,47 +14,48 @@ st.markdown("""<style>
     .vocab-block { background: #f9f9fb; padding: 10px; border-radius: 8px; margin-top: 5px; }
 </style>""", unsafe_allow_html=True)
 
-# API 설정 및 모델 함수
-def get_api_key():
-    return st.session_state.get("sidebar_api_key") or st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+def clean_json(text):
+    text = re.sub(r"^```(?:json)?\n", "", text).replace("```", "")
+    match = re.search(r"\{.*\}", text, flags=re.S)
+    return match.group(0) if match else text
 
-def analyze_text(text):
-    api_key = get_api_key()
-    if not api_key:
-        st.error("API 키가 설정되지 않았습니다.")
-        return
-    
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    
+@st.cache_data(show_spinner=False)
+def call_model(lyrics, api_key):
+    client = genai.Client(api_key=api_key)
     prompt = (f"다음 가사를 분석해서 JSON 형식으로 출력해줘. "
               f"필수 필드: line_number, original, ipa, literal_translation(직역), poetic_translation(의역), vocabulary(word와 meaning 포함). "
-              f"모든 번역과 단어 뜻은 한국어로 작성해줘. "
-              f"가사: {text}")
+              f"모든 번역과 뜻은 한국어로 작성해줘. "
+              f"가사: {lyrics}")
     
-    with st.spinner("AI가 분석 중입니다..."):
-        try:
-            response = model.generate_content(prompt)
-            clean_text = re.sub(r'```json|```', '', response.text).strip()
-            st.session_state.analysis = json.loads(clean_text)
-        except Exception as e:
-            st.error(f"분석 오류: {e}")
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config={"response_mime_type": "application/json", "temperature": 0.2}
+    )
+    return json.loads(clean_json(response.text))
 
-# UI
 st.title("🎼 Vocal Diction Assistant")
 
 if "lyrics_input" not in st.session_state: st.session_state.lyrics_input = ""
 lyrics_input = st.text_area("가사를 입력하세요", value=st.session_state.lyrics_input, height=150)
 st.session_state.lyrics_input = lyrics_input
 
-if st.button("🎵 분석 시작"):
-    if lyrics_input.strip():
-        analyze_text(lyrics_input)
+if st.button("🎵 초고속 분석 시작", type="primary"):
+    api_key = st.session_state.get("sidebar_api_key") or st.secrets.get("GEMINI_API_KEY", "")
+    if not api_key:
+        st.error("API 키를 확인해주세요.")
+    else:
+        with st.spinner("AI가 빠르게 분석 중입니다..."):
+            try:
+                results = call_model(lyrics_input, api_key)
+                st.session_state.analysis_results = results
+                st.success("분석 완료!")
+            except Exception as e:
+                st.error(f"분석 오류: {e}")
 
-# 결과 출력
-if "analysis" in st.session_state and st.session_state.analysis:
+if "analysis_results" in st.session_state:
     st.subheader("📘 분석 결과")
-    for item in st.session_state.analysis:
+    for item in st.session_state.analysis_results:
         st.markdown(f"""
         <div class="line-card">
             <div class="line-title">Line {item.get('line_number')}</div>
@@ -76,7 +74,6 @@ if "analysis" in st.session_state and st.session_state.analysis:
                 st.write(f"• **{v.get('word')}**: {v.get('meaning')}")
             st.markdown('</div>', unsafe_allow_html=True)
 
-# 사이드바
 with st.sidebar:
     st.markdown("### 🔑 설정")
     user_key = st.text_input("API Key 입력", type="password")
