@@ -7,22 +7,20 @@ import google.generativeai as genai
 from datetime import datetime
 from pathlib import Path
 
-# ── 페이지 설정 및 API 초기화 ──────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Vocal Diction & Opera Lyric Assistant",
-    page_icon="🎼",
-    layout="wide",
-)
-
-# Gemini API 설정
+# ── API 설정 (자동 감지 모드) ─────────────────────────────────────────────────
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-2.0-flash-exp')
+    
+    # 사용 가능한 모델 목록을 조회해서 첫 번째 flash 모델을 자동으로 가져옵니다.
+    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    # 'flash'가 포함된 모델을 찾거나, 없으면 기본값으로 1.5-flash 사용
+    flash_model = next((m for m in available_models if 'flash' in m), 'gemini-1.5-flash')
+    
+    model = genai.GenerativeModel(flash_model)
+    st.sidebar.caption(f"연결된 모델: {flash_model}") 
 except Exception as e:
     st.error(f"API 설정 오류: {e}")
     st.stop()
-
-ARCHIVE_PATH = Path("archive.json")
 
 # ── CSS 디자인 (기존 코드 그대로) ─────────────────────────────────────────────
 st.markdown("""
