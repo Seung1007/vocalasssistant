@@ -19,7 +19,6 @@ def clean_json(text):
     match = re.search(r"\{.*\}", text, flags=re.S)
     return match.group(0) if match else text
 
-# STREAMING_CHUNK:교체할 call_model_cached 함수
 @st.cache_data(show_spinner=False, max_entries=512)
 def call_model_cached(lines_tuple: tuple, api_key: str) -> dict:
     if not api_key:
@@ -27,7 +26,7 @@ def call_model_cached(lines_tuple: tuple, api_key: str) -> dict:
 
     # 핵심 수정: genai.configure 방식을 사용합니다
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     inner_attempts = 3
     last_exc = None
@@ -68,6 +67,13 @@ def call_model_cached(lines_tuple: tuple, api_key: str) -> dict:
     if last_exc:
         raise last_exc
     raise RuntimeError("모델 호출에 실패했습니다.")
+
+
+def call_model(lines: list, api_key: str) -> dict:
+    """UI에서 호출하는 다리 역할 함수"""
+    return call_model_cached(tuple(lines), api_key)
+
+def is_rate_limit_error(exc: Exception) -> bool:
 
 st.title("🎼 Vocal Diction Assistant")
 
