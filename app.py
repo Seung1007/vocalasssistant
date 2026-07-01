@@ -1,5 +1,5 @@
 import streamlit as st
-from google import genai
+import google.generativeai as genai  # 이 줄을 수정하세요!
 import json
 import re
 
