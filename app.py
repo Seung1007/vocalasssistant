@@ -17,7 +17,7 @@ st.set_page_config(
 # Gemini API 설정
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
 except Exception as e:
     st.error(f"API 설정 오류: {e}")
     st.stop()
