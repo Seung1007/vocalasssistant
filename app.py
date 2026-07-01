@@ -28,7 +28,7 @@ def analyze_text(text):
         return
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     prompt = (f"다음 가사를 분석해서 JSON 형식으로 출력해줘. "
               f"필수 필드: line_number, original, ipa, literal_translation(직역), poetic_translation(의역), vocabulary(word와 meaning 포함). "
