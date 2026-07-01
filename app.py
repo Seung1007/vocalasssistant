@@ -36,7 +36,6 @@ def get_model():
     if not api_key:
         return None
     genai.configure(api_key=api_key)
-    # 모델명 자동 감지
     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     flash_model = next((m for m in models if 'flash' in m), 'gemini-1.5-flash')
     return genai.GenerativeModel(flash_model)
@@ -57,10 +56,12 @@ if st.button("🎵 분석 시작"):
             st.error("API 키가 설정되지 않았습니다.")
         else:
             with st.spinner("AI가 딕션을 분석 중입니다..."):
-                prompt = f"다음 가사를 분석해서 JSON 형식(line_number, original, ipa, meaning, vocabulary[{word, meaning}])으로 출력해줘: {lyrics_input}"
+                # 문제 해결: 중괄호 중복을 피하기 위해 프롬프트 수정
+                prompt = (f"다음 가사를 분석해서 JSON 형식으로 출력해줘. "
+                          f"필수 필드: line_number, original, ipa, meaning, vocabulary(word와 meaning 포함). "
+                          f"가사: {lyrics_input}")
                 try:
                     response = model.generate_content(prompt)
-                    # JSON 부분만 추출
                     clean_text = re.sub(r'```json|```', '', response.text).strip()
                     st.session_state.analysis = json.loads(clean_text)
                 except Exception as e:
@@ -77,14 +78,14 @@ if st.session_state.analysis:
             <div><span class="ipa-value">IPA: {item.get('ipa')}</span></div>
             <div class="label">의미</div>
             <div>{item.get('meaning')}</div>
+        </div>
         """, unsafe_allow_html=True)
         
         if item.get("vocabulary"):
             st.markdown('<div class="label">핵심 단어</div><div class="vocab-block">', unsafe_allow_html=True)
             for v in item["vocabulary"]:
-                st.write(f"• **{v['word']}**: {v['meaning']}")
+                st.write(f"• **{v.get('word')}**: {v.get('meaning')}")
             st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
 # 사이드바 설정
 with st.sidebar:
