@@ -1,10 +1,13 @@
 import streamlit as st
-import google.generativeai as genai  # 이 줄을 수정하세요!
+from google import genai
 import json
+import os
 import re
 
+# 페이지 설정
 st.set_page_config(page_title="Vocal Diction Assistant", page_icon="🎼", layout="wide")
 
+# CSS 스타일 (카드 UI용)
 st.markdown("""<style>
     .line-card { background: #ffffff; border-radius: 16px; padding: 20px; margin-bottom: 20px; border: 1px solid #e4e4f0; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
     .line-title { font-weight: 800; color: #4a4a8a; margin-bottom: 10px; font-size: 1.2rem; }
@@ -14,89 +17,52 @@ st.markdown("""<style>
     .vocab-block { background: #f9f9fb; padding: 10px; border-radius: 8px; margin-top: 5px; }
 </style>""", unsafe_allow_html=True)
 
-def clean_json(text):
-    text = re.sub(r"^```(?:json)?\n", "", text).replace("```", "")
-    match = re.search(r"\{.*\}", text, flags=re.S)
-    return match.group(0) if match else text
+# 1. API 설정 및 모델 함수
+def get_api_key():
+    return st.session_state.get("sidebar_api_key") or st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
 
 @st.cache_data(show_spinner=False, max_entries=512)
 def call_model_cached(lines_tuple: tuple, api_key: str) -> dict:
-    if not api_key:
-        raise RuntimeError("구글 API 키가 설정되지 않았습니다. 사이드바에 직접 입력하거나 Secrets에서 설정해 주세요.")
-
-    # 핵심 수정: genai.configure 방식을 사용합니다
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-2.5-flash')
     
-    inner_attempts = 3
-    last_exc = None
-    for inner in range(inner_attempts):
-        try:
-            prompt = build_prompt(list(lines_tuple))
-            if inner > 0:
-                prompt += "\n다시 한 번 강조합니다: 각 줄의 'line_ipa'와 'diction'을 반드시 빈칸 없이 채워 한국어로 작성하고, 다른 텍스트 없이 오직 JSON 객체만 출력하세요."
-
-            response = model.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": 0.2,
-                }
-            )
-            raw = getattr(response, "text", "") or ""
-
-            payload = None
-            try:
-                payload = json.loads(clean_json_text(raw))
-            except Exception:
-                payload = parse_model_response(raw, list(lines_tuple))
-
-            if not isinstance(payload, dict):
-                last_exc = RuntimeError("모델 응답을 파싱하지 못했습니다.")
-                continue
-
-            if validate_payload(payload, list(lines_tuple)):
-                return payload
-            last_exc = RuntimeError("모델이 일부 항목의 IPA/딕션을 누락했습니다.")
-
-        except Exception as exc:
-            last_exc = exc
-            if is_rate_limit_error(exc):
-                continue
-            raise
-
-    if last_exc:
-        raise last_exc
-    raise RuntimeError("모델 호출에 실패했습니다.")
-
+    prompt = f"다음 가사를 분석해서 JSON 형식으로 출력해줘: {lines_tuple}. 필수 필드: line_number, original, ipa, literal_translation, poetic_translation, vocabulary(word, meaning). 모든 뜻은 한국어로 작성해."
+    
+    response = model.generate_content(prompt)
+    clean_text = re.sub(r'
+```json|```', '', response.text).strip()
+    return json.loads(clean_text)
 
 def call_model(lines: list, api_key: str) -> dict:
-    """UI에서 호출하는 다리 역할 함수"""
     return call_model_cached(tuple(lines), api_key)
 
-def is_rate_limit_error(exc: Exception) -> bool:
+def analyze_text(text):
+    api_key = get_api_key()
+    if not api_key:
+        st.error("API 키가 설정되지 않았습니다.")
+        return
+    
+    with st.spinner("AI가 분석 중입니다..."):
+        try:
+            st.session_state.analysis = call_model([text], api_key)
+        except Exception as e:
+            st.error(f"분석 오류: {e}")
 
+# 2. 메인 UI (여기서 들여쓰기 0으로 시작!)
 st.title("🎼 Vocal Diction Assistant")
 
 if "lyrics_input" not in st.session_state: st.session_state.lyrics_input = ""
 lyrics_input = st.text_area("가사를 입력하세요", value=st.session_state.lyrics_input, height=150)
 st.session_state.lyrics_input = lyrics_input
 
-if st.button("🎵 초고속 분석 시작", type="primary"):
-    api_key = st.session_state.get("sidebar_api_key") or st.secrets.get("GEMINI_API_KEY", "")
-    if not api_key:
-        st.error("API 키를 확인해주세요.")
-    else:
-        with st.spinner("AI가 빠르게 분석 중입니다..."):
-            try:
-                results = call_model(lyrics_input, api_key)
-                st.session_state.analysis_results = results
-                st.success("분석 완료!")
-            except Exception as e:
-                st.error(f"분석 오류: {e}")
+if st.button("🎵 분석 시작"):
+    if lyrics_input.strip():
+        analyze_text(lyrics_input)
 
-if "analysis_results" in st.session_state:
+# 3. 결과 출력
+if "analysis" in st.session_state and st.session_state.analysis:
     st.subheader("📘 분석 결과")
-    for item in st.session_state.analysis_results:
+    for item in st.session_state.analysis:
         st.markdown(f"""
         <div class="line-card">
             <div class="line-title">Line {item.get('line_number')}</div>
@@ -115,6 +81,7 @@ if "analysis_results" in st.session_state:
                 st.write(f"• **{v.get('word')}**: {v.get('meaning')}")
             st.markdown('</div>', unsafe_allow_html=True)
 
+# 4. 사이드바
 with st.sidebar:
     st.markdown("### 🔑 설정")
     user_key = st.text_input("API Key 입력", type="password")
