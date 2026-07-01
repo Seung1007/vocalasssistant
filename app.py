@@ -72,26 +72,30 @@ VOCABULARY:
 ---
 Lyrics: {joined}"""
 
-def parse_analysis(raw):
-    # 기존 파싱 함수 그대로 사용
-    results = []
-    for block in raw.split("---"):
-        if not block.strip(): continue
-        entry = {"line_number": "", "original": "", "ipa": "", "meaning": "", "vocabulary": []}
-        # ... (기존 파싱 로직 동일)
-        results.append(entry)
-    return results
+# ── 분석 결과를 카드 형태로 예쁘게 출력하는 함수 (app.py에 추가/수정) ──────────
+def display_results(results):
+    for item in results:
+        with st.container():
+            st.markdown(f'<div class="line-card">', unsafe_allow_html=True)
+            st.markdown(f'<div class="line-title">Line {item["line_number"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="original-value">{item["original"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="ipa-value">{item["ipa"]}</div>', unsafe_allow_html=True)
+            
+            st.markdown(f'<div class="label">의미</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="value">{item["meaning"]}</div>', unsafe_allow_html=True)
+            
+            if item.get("vocabulary"):
+                st.markdown(f'<div class="label">단어장</div>', unsafe_allow_html=True)
+                st.markdown('<div class="vocab-block">', unsafe_allow_html=True)
+                for vocab in item["vocabulary"]:
+                    st.markdown(f'<div class="vocab-item"><span class="word">{vocab["word"]}</span>: {vocab["meaning"]}</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
 
-# ── 메인 로직 ────────────────────────────────────────────────────────────────
-st.title("🎼 Vocal Diction & Opera Lyric Assistant")
-lyrics_input = st.text_area("가사를 입력하세요", height=200)
-
-if st.button("🎵 분석 시작"):
-    lines_raw = [l for l in lyrics_input.split("\n") if l.strip()]
-    if lines_raw:
-        with st.spinner("분석 중..."):
-            try:
-                response = model.generate_content(build_prompt(lines_raw))
-                st.session_state.analysis_results = parse_analysis(response.text)
-            except Exception as e:
-                st.error(f"분석 오류: {e}")
+# ── 메인 화면 출력 로직 (버튼 밑에 추가) ──────────────────────────────────────────
+if st.session_state.analysis_results:
+    display_results(st.session_state.analysis_results)
+    if st.button("💾 이 분석 결과 저장하기"):
+        archive_add("오페라 분석", "Unknown", lyrics_input, st.session_state.analysis_results)
+        st.success("보관함에 저장되었습니다!")
